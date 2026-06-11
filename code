@@ -1,0 +1,127 @@
+#include <LiquidCrystal.h>
+#include <Servo.h>
+
+LiquidCrystal lcd(2, 3, 4, 5, 6, 7);
+
+Servo cancelaEntrada;
+Servo cancelaSaida;
+
+int pinoBotaoEntrada = 8;
+int pinoBotaoSaida   = 10;
+int pinoServoEntrada = 9;
+int pinoServoSaida   = 11;
+
+int vagasLivres = 4;
+
+bool cancelaEntradaAberta = false;
+bool cancelaSaidaAberta   = false;
+unsigned long tempoEntrada = 0;
+unsigned long tempoSaida   = 0;
+bool mensagemEntradaAtiva  = false;
+
+void atualizarLCD() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Vagas livres:");
+  lcd.setCursor(14, 0);
+  lcd.print(vagasLivres);
+  lcd.setCursor(0, 1);
+  if (vagasLivres == 0) {
+    lcd.print("LOTADO!         ");
+  } 
+}
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(pinoBotaoEntrada, INPUT_PULLUP);
+  pinMode(pinoBotaoSaida,   INPUT_PULLUP);
+
+  cancelaEntrada.attach(pinoServoEntrada);
+  cancelaSaida.attach(pinoServoSaida);
+
+  cancelaEntrada.write(0);
+  cancelaSaida.write(0);
+
+  lcd.begin(16, 2);
+  lcd.print("Estacionamento");
+  lcd.setCursor(0, 1);
+  lcd.print("Iniciando...");
+  delay(2000);
+  atualizarLCD();
+}
+
+void loop() {
+  unsigned long agora = millis();
+
+  // Recebe dados do Arduino 1
+  if (Serial.available()) {
+    String msg = Serial.readStringUntil('\n');
+    msg.trim();
+    if (msg.startsWith("V:")) {
+      vagasLivres = msg.substring(2).toInt();
+      if (!mensagemEntradaAtiva) {
+        atualizarLCD();
+      }
+    }
+    if (msg.startsWith("S:")) {
+      int p1 = msg.indexOf(':');
+      int p2 = msg.indexOf(':', p1 + 1);
+      String vaga  = msg.substring(p1 + 1, p2);
+      String valor = msg.substring(p2 + 1);
+      if (!mensagemEntradaAtiva) {
+        atualizarLCD();
+      }
+    }
+  }
+
+  // Botão de ENTRADA
+  if (digitalRead(pinoBotaoEntrada) == LOW && !cancelaEntradaAberta) {
+    cancelaEntrada.write(90);
+    cancelaEntradaAberta = true;
+    mensagemEntradaAtiva = true;
+    tempoEntrada = agora;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    if (vagasLivres > 0) {
+      lcd.print("Bem-vindo!      ");
+      lcd.setCursor(0, 1);
+      lcd.print("Retire o ticket ");
+    } else {
+      lcd.print("LOTADO!         ");
+      lcd.setCursor(0, 1);
+      lcd.print("Aguarde uma vaga");
+    }
+  }
+
+  // Fecha cancela de entrada após 3 segundos
+  if (cancelaEntradaAberta && agora - tempoEntrada > 3000) {
+    cancelaEntrada.write(0);
+    cancelaEntradaAberta = false;
+  }
+
+  // Atualiza LCD após 6 segundos (mensagem fica visível mais tempo)
+  if (mensagemEntradaAtiva && agora - tempoEntrada > 6000) {
+    mensagemEntradaAtiva = false;
+    atualizarLCD();
+  }
+
+  // Botão de SAÍDA
+  if (digitalRead(pinoBotaoSaida) == LOW && !cancelaSaidaAberta) {
+    cancelaSaida.write(90);
+    cancelaSaidaAberta = true;
+    tempoSaida = agora;
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Boa viagem!     ");
+    lcd.setCursor(0, 1);
+    lcd.print("Volte sempre!   ");
+  }
+
+  // Fecha cancela de saída após 3 segundos
+  if (cancelaSaidaAberta && agora - tempoSaida > 3000) {
+    cancelaSaida.write(0);
+    cancelaSaidaAberta = false;
+    atualizarLCD();
+  }
+}
